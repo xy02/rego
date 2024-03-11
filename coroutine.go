@@ -17,6 +17,19 @@ type Coroutine struct {
 
 type Handler func(context.Context) error
 
+type StateHandler[S any] func(context.Context, *S) error
+
+func CommonLoop[S any](ctx context.Context, state *S, fnChan <-chan StateHandler[S], onErr func(error)) *Coroutine {
+	return SimpleLoop(ctx, func(ctx context.Context) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case fn := <-fnChan:
+			return fn(ctx, state)
+		}
+	}, onErr)
+}
+
 func SimpleLoop(ctx context.Context, fn Handler, onErr func(error)) *Coroutine {
 	return Go(ctx, func(ctx context.Context) (e error) {
 		defer func() {
