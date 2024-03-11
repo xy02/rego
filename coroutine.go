@@ -14,7 +14,20 @@ type Coroutine struct {
 	err    error
 }
 
-func Go(ctx context.Context, fn func(context.Context) error) *Coroutine {
+type Handler func(context.Context) error
+
+func SimpleLoop(ctx context.Context, fn Handler) *Coroutine {
+	return Go(ctx, func(ctx context.Context) error {
+		for {
+			err := fn(ctx)
+			if err != nil {
+				return err
+			}
+		}
+	})
+}
+
+func Go(ctx context.Context, fn Handler) *Coroutine {
 	ctx, cancel := context.WithCancel(ctx)
 	endCh := make(chan struct{})
 	c := &Coroutine{
