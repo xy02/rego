@@ -10,7 +10,7 @@ type Request[T, V any] struct {
 	ok   *V
 	err  error
 	ch   chan struct{}
-	once sync.Once
+	once *sync.Once
 }
 
 func NewRequest[T, V any](msg T) *Request[T, V] {
@@ -19,7 +19,7 @@ func NewRequest[T, V any](msg T) *Request[T, V] {
 		nil,
 		nil,
 		make(chan struct{}),
-		sync.Once{},
+		&sync.Once{},
 	}
 }
 
