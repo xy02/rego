@@ -17,7 +17,7 @@ type Coroutine struct {
 
 type Handler func(context.Context) error
 
-func SimpleLoop(ctx context.Context, fn Handler) *Coroutine {
+func SimpleLoop(ctx context.Context, fn Handler, onEnd func(error)) *Coroutine {
 	return Go(ctx, func(ctx context.Context) error {
 		for {
 			err := fn(ctx)
@@ -25,10 +25,10 @@ func SimpleLoop(ctx context.Context, fn Handler) *Coroutine {
 				return err
 			}
 		}
-	})
+	}, onEnd)
 }
 
-func Go(ctx context.Context, fn Handler) *Coroutine {
+func Go(ctx context.Context, fn Handler, onEnd func(error)) *Coroutine {
 	ctx, cancel := context.WithCancel(ctx)
 	endCh := make(chan struct{})
 	c := &Coroutine{
@@ -43,6 +43,9 @@ func Go(ctx context.Context, fn Handler) *Coroutine {
 			if r := recover(); r != nil {
 				log.Printf("recovered, %v\n%s\n", r, string(debug.Stack()))
 				c.err = fmt.Errorf("%w: %v", errors.New("internal error"), r)
+			}
+			if onEnd != nil {
+				onEnd(c.err)
 			}
 		}()
 		c.err = fn(ctx)
