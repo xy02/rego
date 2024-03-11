@@ -9,6 +9,7 @@ import (
 )
 
 type Coroutine struct {
+	ctx    context.Context
 	cancel context.CancelFunc
 	endCh  chan struct{}
 	err    error
@@ -31,6 +32,7 @@ func Go(ctx context.Context, fn Handler) *Coroutine {
 	ctx, cancel := context.WithCancel(ctx)
 	endCh := make(chan struct{})
 	c := &Coroutine{
+		ctx,
 		cancel,
 		endCh,
 		nil,
@@ -54,6 +56,8 @@ func (c *Coroutine) Cancel() {
 
 func (c *Coroutine) Await(ctx context.Context) error {
 	select {
+	case <-c.ctx.Done():
+		return c.ctx.Err()
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-c.endCh:
@@ -63,4 +67,8 @@ func (c *Coroutine) Await(ctx context.Context) error {
 
 func (c *Coroutine) EndChan() <-chan struct{} {
 	return c.endCh
+}
+
+func (c *Coroutine) Ctx() context.Context {
+	return c.ctx
 }
