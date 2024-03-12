@@ -19,21 +19,33 @@ type Handler func(context.Context) error
 
 type StateHandler[S any] func(context.Context, *S) error
 
-func CommonLoop[S any](ctx context.Context, state *S, fnChan <-chan StateHandler[S], onErr func(error)) *Coroutine {
-	return SimpleLoop(ctx, func(ctx context.Context) error {
+type CommonLoop[S any] struct {
+	*Coroutine
+	*Sink[StateHandler[S]]
+}
+
+func NewCommonLoop[S any](ctx context.Context, state *S, chanSize int, onErr func(error)) *CommonLoop[S] {
+	sink, ch := NewSink[StateHandler[S]](ctx, chanSize)
+	loop := SimpleLoop(ctx, func(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case fn := <-fnChan:
+		case fn := <-ch:
 			return fn(ctx, state)
 		}
 	}, onErr)
+	return &CommonLoop[S]{
+		loop,
+		sink,
+	}
 }
 
 func SimpleLoop(ctx context.Context, fn Handler, onErr func(error)) *Coroutine {
 	return Go(ctx, func(ctx context.Context) (e error) {
 		defer func() {
-			onErr(e)
+			if onErr != nil {
+				onErr(e)
+			}
 		}()
 		for {
 			err := fn(ctx)
