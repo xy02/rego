@@ -17,7 +17,7 @@ type Coroutine struct {
 
 type Handler func(context.Context) error
 
-type StateHandler[S any] func(context.Context, *S) error
+type StateHandler[S any] func(context.Context, *S, *Sink[StateHandler[S]]) error
 
 type CommonLoop[S any] struct {
 	*Coroutine
@@ -31,7 +31,7 @@ func NewCommonLoop[S any](ctx context.Context, state *S, chanSize int, onErr fun
 		case <-ctx.Done():
 			return ctx.Err()
 		case fn := <-ch:
-			return fn(ctx, state)
+			return fn(ctx, state, sink)
 		}
 	}, onErr)
 	return &CommonLoop[S]{
