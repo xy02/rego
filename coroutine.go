@@ -84,8 +84,8 @@ func (c *Coroutine) Cancel() {
 
 func (c *Coroutine) Await(ctx context.Context) error {
 	select {
-	case <-c.ctx.Done():
-		return c.ctx.Err()
+	// case <-c.ctx.Done():
+	// 	return c.ctx.Err()
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-c.endCh:
