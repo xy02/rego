@@ -66,6 +66,7 @@ func Go(ctx context.Context, fn Handler) *Coroutine {
 		nil,
 	}
 	go func() {
+		defer cancel()
 		defer close(endCh)
 		defer func() {
 			if r := recover(); r != nil {
