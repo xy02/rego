@@ -1,6 +1,9 @@
 package rego
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type StateFn[S any] func(context.Context, *S) error
 
@@ -15,7 +18,18 @@ func NewFnSink[S any](ctx context.Context, size int) (*FnSink[S], <-chan StateFn
 	}, ch
 }
 
-func HandlerLoop[S any](ctx context.Context, state *S, requestChan <-chan StateFn[S], onInit func() error, onErr func(error)) *Coroutine {
+func RetryFnLoop[S any](ctx context.Context, state *S, requestChan <-chan StateFn[S], onInit func() error, onErr func(error), sleep time.Duration) *Coroutine {
+	return Retry(ctx, func(ctx context.Context) error {
+		co := FnLoop(ctx, state, requestChan, onInit, onErr)
+		err := co.Await(ctx)
+		if err != nil {
+			time.Sleep(sleep)
+		}
+		return err
+	})
+}
+
+func FnLoop[S any](ctx context.Context, state *S, requestChan <-chan StateFn[S], onInit func() error, onErr func(error)) *Coroutine {
 	return Go(ctx, func(ctx context.Context) (e error) {
 		defer func() {
 			if onErr != nil {
