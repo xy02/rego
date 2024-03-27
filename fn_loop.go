@@ -11,6 +11,11 @@ type FnSink[S any] struct {
 	*Sink[StateFn[S]]
 }
 
+type FnSinkLoop[S any] struct {
+	*Coroutine
+	*FnSink[S]
+}
+
 func NewFnSink[S any](ctx context.Context, size int) (*FnSink[S], <-chan StateFn[S]) {
 	sink, ch := NewSink[StateFn[S]](ctx, size)
 	return &FnSink[S]{
