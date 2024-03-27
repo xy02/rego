@@ -4,6 +4,17 @@ import "context"
 
 type StateFn[S any] func(context.Context, *S) error
 
+type FnSink[S any] struct {
+	*Sink[StateFn[S]]
+}
+
+func NewFnSink[S any](ctx context.Context, size int) (*FnSink[S], <-chan StateFn[S]) {
+	sink, ch := NewSink[StateFn[S]](ctx, size)
+	return &FnSink[S]{
+		sink,
+	}, ch
+}
+
 func HandlerLoop[S any](ctx context.Context, state *S, requestChan <-chan StateFn[S], onInit func() error, onErr func(error)) *Coroutine {
 	return Go(ctx, func(ctx context.Context) (e error) {
 		defer func() {
