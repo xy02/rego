@@ -40,10 +40,10 @@ func HandlerLoop[S any](ctx context.Context, state *S, requestChan <-chan StateF
 }
 
 // retry fn util it return nil
-func Retry(ctx context.Context, fn func() error) *Coroutine {
+func Retry(ctx context.Context, fn func(context.Context) error) *Coroutine {
 	return Go(ctx, func(ctx context.Context) error {
 		for {
-			err := fn()
+			err := fn(ctx)
 			if err != nil {
 				continue
 			}
