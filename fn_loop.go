@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-type StateFn[S any] func(context.Context, *S) error
+type StateFn[S any] func(context.Context, *S)
 
 type FnSink[S any] struct {
 	*Sink[StateFn[S]]
@@ -52,7 +52,7 @@ func FnLoop[S any](ctx context.Context, state *S, requestChan <-chan StateFn[S],
 			case <-ctx.Done():
 				return ctx.Err()
 			case fn := <-requestChan:
-				return fn(ctx, state)
+				fn(ctx, state)
 			}
 		}
 	})
