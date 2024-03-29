@@ -41,7 +41,9 @@ func (req *Reply[V]) Await(ctx context.Context) (ok V, err error) {
 		err = ctx.Err()
 		return
 	case <-req.ch:
-		ok = *req.ok
+		if req.ok != nil {
+			ok = *req.ok
+		}
 		err = req.err
 		return
 	}
