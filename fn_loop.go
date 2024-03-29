@@ -62,6 +62,9 @@ func FnLoop[S any](ctx context.Context, state *S, requestChan <-chan StateFn[S],
 func Retry(ctx context.Context, fn func(context.Context) error) *Coroutine {
 	return Go(ctx, func(ctx context.Context) error {
 		for {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			err := fn(ctx)
 			if err != nil {
 				continue
