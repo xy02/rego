@@ -23,6 +23,14 @@ func NewFnSink[S any](ctx context.Context, size int) (*FnSink[S], <-chan StateFn
 	}, ch
 }
 
+func AwaitReply[S, V any](ctx context.Context, fnSink *FnSink[S], fn StateFn[S], reply *Reply[V]) (ok V, err error) {
+	err = fnSink.Write(fn)
+	if err != nil {
+		return
+	}
+	return reply.Await(ctx)
+}
+
 func RetryFnLoop[S any](ctx context.Context, state *S, requestChan <-chan StateFn[S], onInit func() error, onErr func(error), sleep time.Duration) *Coroutine {
 	return Retry(ctx, func(ctx context.Context) error {
 		co := FnLoop(ctx, state, requestChan, onInit, onErr)
