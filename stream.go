@@ -12,7 +12,7 @@ type Stream[T any] struct {
 	subChan   chan *subscription[T]
 	sink      *Sink[T]
 	once      *sync.Once
-	generator func(ctx context.Context, sink *Sink[T])
+	generator func(ctx context.Context, sink *Sink[T]) error
 	sinkSize  int
 }
 
@@ -23,7 +23,7 @@ type subscription[T any] struct {
 	taken   int
 }
 
-func NewStream[T any](ctx context.Context, sinkSize int, generator func(ctx context.Context, sink *Sink[T])) *Stream[T] {
+func NewStream[T any](ctx context.Context, sinkSize int, generator func(ctx context.Context, sink *Sink[T]) error) *Stream[T] {
 	subChan := make(chan *subscription[T], 1)
 	sink, sinkCh := NewSink[T](ctx, sinkSize)
 	handler := func(ctx context.Context) (err error) {
@@ -63,8 +63,10 @@ func NewStream[T any](ctx context.Context, sinkSize int, generator func(ctx cont
 
 func (s *Stream[T]) Start() (co *Coroutine) {
 	s.once.Do(func() {
-		co = Go(s.ctx, s.handler)
-		s.generator(s.ctx, s.sink)
+		ctx := Go(s.ctx, func(ctx context.Context) error {
+			return s.generator(ctx, s.sink)
+		}).Ctx()
+		co = Go(ctx, s.handler)
 	})
 	return
 }
