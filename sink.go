@@ -31,11 +31,11 @@ func (s *Sink[T]) Write(value T) error {
 }
 
 func (s *Sink[T]) WriteWithCtx(ctx context.Context, value T) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	// ctx, cancel := context.WithCancel(ctx)
+	// defer cancel()
 	select {
-	case <-s.ctx.Done():
-		return s.ctx.Err()
+	// case <-s.ctx.Done():
+	// 	return s.ctx.Err()
 	case <-ctx.Done():
 		return ctx.Err()
 	case s.ch <- value:
