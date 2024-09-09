@@ -19,13 +19,17 @@ type Request[S, T any] interface {
 	Handle(ctx context.Context, state *S, reply *Reply[T])
 }
 
+type RequestHandler[S, T any] func(ctx context.Context, state *S, reply *Reply[T])
+
 type FnSinker[S any] interface {
 	WriteWithCtx(ctx context.Context, value StateFn[S]) error
 }
 
-func SendRequest[S, T any](ctx context.Context, fnSinker FnSinker[S], req Request[S, T]) (reply *Reply[T], err error) {
-	reply = NewReply[T]()
-	err = fnSinker.WriteWithCtx(ctx, func(ctx context.Context, s *S) {
+func SendWithReply[S, T any](ctx context.Context, fnSinker FnSinker[S], handler RequestHandler[S, T], reply *Reply[T]) (err error) {
+	if reply == nil {
+		return errors.New("reply is nil")
+	}
+	return fnSinker.WriteWithCtx(ctx, func(ctx context.Context, s *S) {
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("recovered, %v\n%s\n", r, string(debug.Stack()))
@@ -33,9 +37,28 @@ func SendRequest[S, T any](ctx context.Context, fnSinker FnSinker[S], req Reques
 				reply.Reject(err)
 			}
 		}()
-		req.Handle(ctx, s, reply)
+		handler(ctx, s, reply)
 	})
+}
+
+func Send[S, T any](ctx context.Context, fnSinker FnSinker[S], handler RequestHandler[S, T]) (reply *Reply[T], err error) {
+	reply = NewReply[T]()
+	err = SendWithReply(ctx, fnSinker, handler, reply)
 	return
+}
+
+func SendRequest[S, T any](ctx context.Context, fnSinker FnSinker[S], req Request[S, T]) (reply *Reply[T], err error) {
+	reply = NewReply[T]()
+	err = SendWithReply(ctx, fnSinker, req.Handle, reply)
+	return
+}
+
+func Await[S, T any](ctx context.Context, fnSinker FnSinker[S], handler RequestHandler[S, T]) (ok T, err error) {
+	reply, err := Send(ctx, fnSinker, handler)
+	if err != nil {
+		return
+	}
+	return reply.Await(ctx)
 }
 
 func AwaitResult[S, T any](ctx context.Context, fnSinker FnSinker[S], req Request[S, T]) (ok T, err error) {
