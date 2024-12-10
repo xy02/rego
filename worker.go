@@ -29,9 +29,49 @@ type Ctx[S, T any] struct {
 }
 
 type CtxHandler[S, T any] func(ctx Ctx[S, T])
+type CtxHandlerWithErr[S, T any] func(ctx Ctx[S, T]) error
 
 type FnSinker[S any] interface {
 	WriteWithCtx(ctx context.Context, value StateFn[S]) error
+}
+
+func AssignWithReply[S, T any](ctx context.Context, fnSinker FnSinker[S], handler CtxHandlerWithErr[S, T], reply *Reply[T]) (err error) {
+	if reply == nil {
+		return errors.New("reply is nil")
+	}
+	return fnSinker.WriteWithCtx(ctx, func(ctx context.Context, s *S) {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("recovered, %v\n%s\n", r, string(debug.Stack()))
+				err := fmt.Errorf("%w: %v", ErrInternal, r)
+				reply.Reject(err)
+			}
+		}()
+		err := handler(Ctx[S, T]{
+			ctx,
+			s,
+			reply,
+			fnSinker,
+		})
+		if err != nil {
+			reply.Reject(err)
+		}
+	})
+}
+
+func Assign[S, T any](ctx context.Context, fnSinker FnSinker[S], handler CtxHandlerWithErr[S, T]) (reply *Reply[T], err error) {
+	reply = NewReply[T]()
+	err = AssignWithReply(ctx, fnSinker, handler, reply)
+	return
+}
+
+func AwaitV2[S, T any](ctx context.Context, fnSinker FnSinker[S], handler CtxHandlerWithErr[S, T]) (ok T, err error) {
+	reply := NewReply[T]()
+	err = AssignWithReply(ctx, fnSinker, handler, reply)
+	if err != nil {
+		return
+	}
+	return reply.Await(ctx)
 }
 
 func SendWithReply[S, T any](ctx context.Context, fnSinker FnSinker[S], handler CtxHandler[S, T], reply *Reply[T]) (err error) {
