@@ -3,22 +3,24 @@ package rego
 import (
 	"context"
 	"fmt"
+	"math"
 )
 
 type Property[T any] struct {
 	readCh     chan chan<- T
 	writeCh    chan T
 	watchCh    chan watchRequest[T]
+	unwatchCh  chan string
 	consumedCh chan consumedACK
 }
 
 func NewProperty[T any](value T, maxUnconsumed int) *Property[T] {
-	chanSize := 10
 	prop := &Property[T]{
 		readCh:     make(chan chan<- T, 1),
-		writeCh:    make(chan T, chanSize),
+		writeCh:    make(chan T, maxUnconsumed),
 		watchCh:    make(chan watchRequest[T], 1),
-		consumedCh: make(chan consumedACK, chanSize),
+		unwatchCh:  make(chan string, 1),
+		consumedCh: make(chan consumedACK, maxUnconsumed),
 	}
 	go func() {
 		state := newState(value)
@@ -41,6 +43,17 @@ func NewProperty[T any](value T, maxUnconsumed int) *Property[T] {
 			case v := <-getUpdateCh():
 				state = state.update(v)
 				propSN++
+			case id := <-prop.unwatchCh:
+				delete(watcherSnMap, id)
+				if id == slowestWatcherID {
+					slowestWatcherSN = math.MaxInt
+					for id, sn := range watcherSnMap {
+						if sn < slowestWatcherSN {
+							slowestWatcherSN = sn
+							slowestWatcherID = id
+						}
+					}
+				}
 			case req := <-prop.watchCh:
 				w := &Watcher[T]{
 					state:     state,
@@ -87,8 +100,12 @@ func (p *Property[T]) Get() T {
 	return <-replyCh
 }
 
-func (p *Property[T]) Set(value T) {
-	p.writeCh <- value
+// func (p *Property[T]) Set(value T) {
+// 	p.writeCh <- value
+// }
+
+func (p *Property[T]) WriteChan() chan<- T {
+	return p.writeCh
 }
 
 func (p *Property[T]) SetWithContext(ctx context.Context, value T) bool {

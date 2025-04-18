@@ -1,9 +1,5 @@
 package rego
 
-import (
-	"context"
-)
-
 type Watcher[T any] struct {
 	id        string
 	state     *state[T]
@@ -25,13 +21,11 @@ func (w *Watcher[T]) Value() T {
 	return w.state.value
 }
 
-func (w *Watcher[T]) GetNext() T {
-	<-w.state.nextDone
-	w.next()
-	return w.state.value
+func (w *Watcher[T]) NextDone() <-chan struct{} {
+	return w.state.nextDone
 }
 
-func (w *Watcher[T]) next() {
+func (w *Watcher[T]) Next() {
 	w.state = w.state.next
 	w.consumed++
 	if w.consumed > w.threshold {
@@ -43,15 +37,8 @@ func (w *Watcher[T]) next() {
 	}
 }
 
-func (w *Watcher[T]) GetNextWithContext(ctx context.Context) (result T, ok bool) {
-	select {
-	case <-ctx.Done():
-		ok = false
-		return
-	case <-w.state.nextDone:
-		w.next()
-		ok = true
-		result = w.state.value
-	}
-	return
+func (w *Watcher[T]) Close() {
+	w.prop.unwatchCh <- w.id
+	w.state = nil
+	w.prop = nil
 }
