@@ -1,11 +1,14 @@
 package rego
 
+import "sync"
+
 type Watcher[T any] struct {
 	id        string
 	state     *state[T]
 	threshold int
 	consumed  int
 	prop      *Property[T]
+	sync.RWMutex
 }
 
 type consumedACK struct {
@@ -25,7 +28,10 @@ func (w *Watcher[T]) NextDone() <-chan struct{} {
 	return w.state.nextDone
 }
 
-func (w *Watcher[T]) Next() {
+func (w *Watcher[T]) Next() bool {
+	if w.state.next == nil {
+		return false
+	}
 	w.state = w.state.next
 	w.consumed++
 	if w.consumed > w.threshold {
@@ -35,10 +41,22 @@ func (w *Watcher[T]) Next() {
 		})
 		w.consumed = 0
 	}
+	return true
 }
 
 func (w *Watcher[T]) Close() {
-	w.prop.unwatchCh <- w.id
-	w.state = nil
+	w.Lock()
+	defer w.Unlock()
+	if w.prop == nil {
+		return
+	}
+	w.prop.unwatch(w.id)
+	// w.state = nil
 	w.prop = nil
+}
+
+func (w *Watcher[T]) Closed() bool {
+	w.RLock()
+	defer w.RUnlock()
+	return w.prop == nil
 }

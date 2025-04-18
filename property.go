@@ -1,9 +1,9 @@
 package rego
 
 import (
-	"context"
 	"fmt"
 	"math"
+	"sync"
 )
 
 type Property[T any] struct {
@@ -12,6 +12,7 @@ type Property[T any] struct {
 	watchCh    chan watchRequest[T]
 	unwatchCh  chan string
 	consumedCh chan consumedACK
+	sync.RWMutex
 }
 
 func NewProperty[T any](value T, maxUnconsumed int) *Property[T] {
@@ -38,7 +39,11 @@ func NewProperty[T any](value T, maxUnconsumed int) *Property[T] {
 		}
 		for {
 			select {
-			case replyCh := <-prop.readCh:
+			case replyCh, ok := <-prop.readCh:
+				if !ok {
+					state.next = nil
+					return
+				}
 				replyCh <- state.value
 			case v := <-getUpdateCh():
 				state = state.update(v)
@@ -94,30 +99,36 @@ func NewProperty[T any](value T, maxUnconsumed int) *Property[T] {
 	return prop
 }
 
-func (p *Property[T]) Get() T {
+func (p *Property[T]) Release() {
+	p.Lock()
+	defer p.Unlock()
+	if p.readCh == nil {
+		return
+	}
+	close(p.readCh)
+	p.readCh = nil
+}
+
+func (p *Property[T]) Get() (result T) {
+	if p.Released() {
+		return
+	}
 	replyCh := make(chan T, 1)
 	p.readCh <- replyCh
 	return <-replyCh
 }
 
-// func (p *Property[T]) Set(value T) {
-// 	p.writeCh <- value
-// }
-
 func (p *Property[T]) WriteChan() chan<- T {
+	if p.Released() {
+		return nil
+	}
 	return p.writeCh
 }
 
-func (p *Property[T]) SetWithContext(ctx context.Context, value T) bool {
-	select {
-	case <-ctx.Done():
-		return false
-	case p.writeCh <- value:
-		return true
-	}
-}
-
 func (p *Property[T]) Watch() *Watcher[T] {
+	if p.Released() {
+		return nil
+	}
 	replyCh := make(chan *Watcher[T], 1)
 	p.watchCh <- watchRequest[T]{
 		replyCh: replyCh,
@@ -125,6 +136,22 @@ func (p *Property[T]) Watch() *Watcher[T] {
 	return <-replyCh
 }
 
+func (p *Property[T]) Released() bool {
+	p.RLock()
+	defer p.RUnlock()
+	return p.readCh == nil
+}
+
 func (p *Property[T]) ackConsumed(ack consumedACK) {
+	if p.Released() {
+		return
+	}
 	p.consumedCh <- ack
+}
+
+func (p *Property[T]) unwatch(id string) {
+	if p.Released() {
+		return
+	}
+	p.unwatchCh <- id
 }
