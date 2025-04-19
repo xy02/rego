@@ -1,9 +1,9 @@
 package rego
 
 import (
+	"context"
 	"fmt"
 	"math"
-	"sync"
 )
 
 type Property[T any] struct {
@@ -12,18 +12,21 @@ type Property[T any] struct {
 	watchCh    chan watchRequest[T]
 	unwatchCh  chan string
 	consumedCh chan consumedACK
-	sync.RWMutex
+	ctx        context.Context
 }
 
 func NewProperty[T any](value T, maxUnconsumed int) *Property[T] {
+	ctx, cancel := context.WithCancel(context.Background())
 	prop := &Property[T]{
 		readCh:     make(chan chan<- T, 1),
 		writeCh:    make(chan T, maxUnconsumed),
 		watchCh:    make(chan watchRequest[T], 1),
 		unwatchCh:  make(chan string, 1),
 		consumedCh: make(chan consumedACK, maxUnconsumed),
+		ctx:        ctx,
 	}
 	go func() {
+		defer cancel()
 		state := newState(value)
 		propSN := 0
 		slowestWatcherSN := 0
@@ -39,13 +42,14 @@ func NewProperty[T any](value T, maxUnconsumed int) *Property[T] {
 		}
 		for {
 			select {
-			case replyCh, ok := <-prop.readCh:
+			case replyCh := <-prop.readCh:
+				replyCh <- state.value
+			case v, ok := <-getUpdateCh():
 				if !ok {
 					state.next = nil
+					close(state.nextDone)
 					return
 				}
-				replyCh <- state.value
-			case v := <-getUpdateCh():
 				state = state.update(v)
 				propSN++
 			case id := <-prop.unwatchCh:
@@ -99,59 +103,49 @@ func NewProperty[T any](value T, maxUnconsumed int) *Property[T] {
 	return prop
 }
 
-func (p *Property[T]) Release() {
-	p.Lock()
-	defer p.Unlock()
-	if p.readCh == nil {
-		return
-	}
-	close(p.readCh)
-	p.readCh = nil
-}
-
 func (p *Property[T]) Get() (result T) {
-	if p.Released() {
-		return
-	}
 	replyCh := make(chan T, 1)
-	p.readCh <- replyCh
-	return <-replyCh
+	select {
+	case <-p.ctx.Done():
+		return
+	case p.readCh <- replyCh:
+		return <-replyCh
+	}
 }
 
 func (p *Property[T]) WriteChan() chan<- T {
-	if p.Released() {
-		return nil
-	}
 	return p.writeCh
 }
 
 func (p *Property[T]) Watch() *Watcher[T] {
-	if p.Released() {
-		return nil
-	}
 	replyCh := make(chan *Watcher[T], 1)
-	p.watchCh <- watchRequest[T]{
+	select {
+	case <-p.ctx.Done():
+		return nil
+	case p.watchCh <- watchRequest[T]{
 		replyCh: replyCh,
+	}:
+		return <-replyCh
 	}
-	return <-replyCh
 }
 
-func (p *Property[T]) Released() bool {
-	p.RLock()
-	defer p.RUnlock()
-	return p.readCh == nil
+func (p *Property[T]) Closed() bool {
+	return p.ctx.Err() != nil
 }
 
 func (p *Property[T]) ackConsumed(ack consumedACK) {
-	if p.Released() {
+	select {
+	case <-p.ctx.Done():
 		return
+	case p.consumedCh <- ack:
 	}
-	p.consumedCh <- ack
+
 }
 
 func (p *Property[T]) unwatch(id string) {
-	if p.Released() {
+	select {
+	case <-p.ctx.Done():
 		return
+	case p.unwatchCh <- id:
 	}
-	p.unwatchCh <- id
 }

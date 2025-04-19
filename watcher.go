@@ -8,7 +8,7 @@ type Watcher[T any] struct {
 	threshold int
 	consumed  int
 	prop      *Property[T]
-	sync.RWMutex
+	propMu    sync.RWMutex
 }
 
 type consumedACK struct {
@@ -45,8 +45,8 @@ func (w *Watcher[T]) Next() bool {
 }
 
 func (w *Watcher[T]) Close() {
-	w.Lock()
-	defer w.Unlock()
+	w.propMu.Lock()
+	defer w.propMu.Unlock()
 	if w.prop == nil {
 		return
 	}
@@ -56,7 +56,7 @@ func (w *Watcher[T]) Close() {
 }
 
 func (w *Watcher[T]) Closed() bool {
-	w.RLock()
-	defer w.RUnlock()
+	w.propMu.RLock()
+	defer w.propMu.RUnlock()
 	return w.prop == nil
 }
