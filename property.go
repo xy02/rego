@@ -57,6 +57,7 @@ func NewProperty[T any](value T, maxUnconsumed int) *Property[T] {
 			case id := <-prop.unwatchCh:
 				delete(watcherSnMap, id)
 				if id == slowestWatcherID {
+					slowestWatcherID = ""
 					slowestWatcherSN = math.MaxInt
 					for id, sn := range watcherSnMap {
 						if sn < slowestWatcherSN {
