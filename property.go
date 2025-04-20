@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sync"
 )
 
 type Property[T any] struct {
@@ -13,6 +14,7 @@ type Property[T any] struct {
 	unwatchCh  chan string
 	consumedCh chan consumedACK
 	ctx        context.Context
+	once       sync.Once
 }
 
 func NewProperty[T any](value T, maxUnconsumed int) *Property[T] {
@@ -117,6 +119,16 @@ func (p *Property[T]) WriteChan() chan<- T {
 	return p.writeCh
 }
 
+func (p *Property[T]) Close() {
+	p.once.Do(func() {
+		close(p.writeCh)
+	})
+}
+
+func (p *Property[T]) Closed() bool {
+	return p.ctx.Err() != nil
+}
+
 func (p *Property[T]) Watch() *Watcher[T] {
 	replyCh := make(chan *Watcher[T], 1)
 	select {
@@ -127,10 +139,6 @@ func (p *Property[T]) Watch() *Watcher[T] {
 	}:
 		return <-replyCh
 	}
-}
-
-func (p *Property[T]) Closed() bool {
-	return p.ctx.Err() != nil
 }
 
 func (p *Property[T]) ackConsumed(ack consumedACK) {
